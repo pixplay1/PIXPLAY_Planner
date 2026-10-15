@@ -473,7 +473,7 @@ function ledgerItem(label,emoji,color,base,u,extra){
     '<div class="ls">'+sub+'</div>'+(extra||'')+'</div>';
 }
 function topHTML(){
-  return '<div class="top"><div class="brand">Year planner<span id="sync" class="sync" data-s="'+sync.state+'"'+(CONFIGURED?' data-act="account" role="button" tabindex="0"':'')+'>'+SYNC_LABEL[sync.state]+'</span></div><div class="acts">'+
+  return '<div class="top"><div class="brand">Pixplay planner<span id="sync" class="sync" data-s="'+sync.state+'"'+(CONFIGURED?' data-act="account" role="button" tabindex="0"':'')+'>'+SYNC_LABEL[sync.state]+'</span></div><div class="acts">'+
     '<button class="btn primary" data-act="add">Add event</button>'+
     '<button class="btn" data-act="backup">Backup</button>'+(CONFIGURED?'<button class="btn" data-act="account">'+(sync.uid?'Account':'Sign in')+'</button>':'')+'</div></div>';
 }
