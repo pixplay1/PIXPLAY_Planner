@@ -1,4 +1,3 @@
-
 <!doctype html>
 <html lang="en">
 <head>
@@ -7,7 +6,11 @@
 <title>Year planner</title>
 <meta name="theme-color" content="#edf0f6">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%97%93%EF%B8%8F%3C/text%3E%3C/svg%3E">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="apple-mobile-web-app-title" content="Planner">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -696,9 +699,9 @@ function accountDialog(){
   if(!CONFIGURED) body='<p class="hint">Account sync isn’t set up in this copy of the app yet. Add your Supabase project URL and anon key near the top of the script in <b>index.html</b>, then redeploy. Until then, plans are saved on this device only.</p>';
   else if(!SB) body='<p class="hint">The sign-in library couldn’t load. Check your connection and reload. Plans are still saved on this device.</p>';
   else if(sync.uid) body='<p style="margin:0">Signed in as <b>'+esc(sync.email||'your account')+'</b>.</p><p class="hint" id="acc-state">'+esc(SYNC_LABEL[sync.state])+'</p><footer><button type="button" class="btn" data-dact="close">Close</button><button type="button" class="btn danger" data-dact="sign-out">Sign out</button></footer>';
-  else body='<p class="hint">Sign in to keep your plans in your account and see them on every device. We’ll email you a one-time sign-in link, so there’s no password to remember. Plans already on this device are kept and uploaded the first time.</p>'+
+  else body='<p class="hint">Sign in to keep your plans in your account and see them on every device. We’ll email you a one-time sign-in link and code, so there’s no password to remember. Plans already on this device are kept and uploaded the first time.</p>'+
     '<label class="f"><span>Email</span><input type="email" id="acc-email" autocomplete="email" inputmode="email" placeholder="you@example.com" style="width:100%;border:1px solid var(--line);background:var(--surface2);border-radius:10px;padding:8px 11px"></label>'+
-    '<p class="msg" id="acc-msg" aria-live="polite"></p><footer><button type="button" class="btn" data-dact="close">Not now</button><button type="submit" class="btn primary">Email me a sign-in link</button></footer>';
+    '<p class="msg" id="acc-msg" aria-live="polite"></p><div id="acc-code-box"></div><footer><button type="button" class="btn" data-dact="close">Not now</button><button type="submit" class="btn primary">Email me a sign-in link</button></footer>';
   showDlg('<form class="dform" id="accform" novalidate>'+dHead('Account')+body+'</form>','account');
 }
 function sendLink(){
@@ -707,7 +710,11 @@ function sendLink(){
   m.style.color='var(--muted)';m.textContent='Sending…';
   SB.auth.signInWithOtp({email:em,options:{emailRedirectTo:location.origin+location.pathname}}).then(function(r){
     if(r.error){m.style.color='var(--danger)';m.textContent=r.error.message||'Couldn’t send the link. Try again in a minute.';}
-    else{m.style.color='var(--ok)';m.textContent='Check your inbox and open the link on this device.';}
+    else{
+      m.style.color='var(--ok)';m.textContent='Email sent. Tap the link in it, or type the code from the email below.';
+      var box=$('#acc-code-box');
+      if(box){ box.innerHTML='<label class="f"><span>Code from the email</span><input type="text" id="acc-code" autocomplete="one-time-code" inputmode="numeric" maxlength="10" placeholder="Enter the code" style="width:100%;border:1px solid var(--line);background:var(--surface2);border-radius:10px;padding:8px 11px;font-size:18px;letter-spacing:.2em;text-align:center"></label><div class="btnrow"><button type="button" class="btn primary" data-dact="verify-code">Sign in with code</button></div>'; var ci=$('#acc-code'); if(ci) ci.focus(); }
+    }
   }).catch(function(){m.style.color='var(--danger)';m.textContent='Couldn’t reach the server. Check your connection.'});
 }
 
@@ -874,6 +881,14 @@ dlg.addEventListener('click',function(e){
   switch(a){
     case 'close':closeDlg();break;
     case 'sign-out':if(SB)SB.auth.signOut();break;
+    case 'verify-code':{
+      var em2=(($('#acc-email')||{}).value||'').trim(),cd=(($('#acc-code')||{}).value||'').replace(/\s+/g,''),mm=$('#acc-msg');
+      if(!/^\d{4,10}$/.test(cd)){mm.style.color='var(--danger)';mm.textContent='Enter the numeric code from the email.';break}
+      mm.style.color='var(--muted)';mm.textContent='Checking…';
+      SB.auth.verifyOtp({email:em2,token:cd,type:'email'}).then(function(r){
+        if(r.error){mm.style.color='var(--danger)';mm.textContent='That code didn’t work. Check it, or request a new email.';}
+      }).catch(function(){mm.style.color='var(--danger)';mm.textContent='Couldn’t reach the server. Check your connection.'});
+      break}
     case 'pick-cal':{
       draft.cal=id;var c=calById(id);
       if(!c.cats.some(function(x){return x.id===draft.cat}))draft.cat='';
