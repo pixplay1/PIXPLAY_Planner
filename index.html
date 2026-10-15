@@ -689,33 +689,82 @@ function initSync(){
       setTimeout(function(){
         if(ev==='SIGNED_IN'&&session) startSync(session.user);
         else if(ev==='SIGNED_OUT') stopSync();
+        if(ev==='PASSWORD_RECOVERY'){ sync.recovery=true; accountDialog(); }
       },0);
     });
     if(!sync.visHooked){ sync.visHooked=true; document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='visible') refetch(); }); }
   }catch(e){ setSync('local'); }
 }
+var EMAILRE=/^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+var INPUT_CSS='width:100%;border:1px solid var(--line);background:var(--surface2);border-radius:10px;padding:8px 11px';
+function accField(label,id,type,ac,ph){
+  return '<label class="f"><span>'+label+'</span><input type="'+type+'" id="'+id+'" autocomplete="'+ac+'" placeholder="'+(ph||'')+'" style="'+INPUT_CSS+'"'+(type==='email'?' inputmode="email" autocapitalize="off" autocorrect="off"':'')+'></label>';
+}
 function accountDialog(){
   var body;
-  if(!CONFIGURED) body='<p class="hint">Account sync isn’t set up in this copy of the app yet. Add your Supabase project URL and anon key near the top of the script in <b>index.html</b>, then redeploy. Until then, plans are saved on this device only.</p>';
+  if(!CONFIGURED) body='<p class="hint">Account sync isn’t set up in this copy of the app yet. Add your Supabase project URL and key near the top of the script in <b>index.html</b>, then redeploy. Until then, plans are saved on this device only.</p>';
   else if(!SB) body='<p class="hint">The sign-in library couldn’t load. Check your connection and reload. Plans are still saved on this device.</p>';
-  else if(sync.uid) body='<p style="margin:0">Signed in as <b>'+esc(sync.email||'your account')+'</b>.</p><p class="hint" id="acc-state">'+esc(SYNC_LABEL[sync.state])+'</p><footer><button type="button" class="btn" data-dact="close">Close</button><button type="button" class="btn danger" data-dact="sign-out">Sign out</button></footer>';
-  else body='<p class="hint">Sign in to keep your plans in your account and see them on every device. We’ll email you a one-time sign-in link and code, so there’s no password to remember. Plans already on this device are kept and uploaded the first time.</p>'+
-    '<label class="f"><span>Email</span><input type="email" id="acc-email" autocomplete="email" inputmode="email" placeholder="you@example.com" style="width:100%;border:1px solid var(--line);background:var(--surface2);border-radius:10px;padding:8px 11px"></label>'+
-    '<p class="msg" id="acc-msg" aria-live="polite"></p><div id="acc-code-box"></div><footer><button type="button" class="btn" data-dact="close">Not now</button><button type="submit" class="btn primary">Email me a sign-in link</button></footer>';
+  else if(sync.recovery) body='<p class="hint">Choose a new password for your account.</p>'+accField('New password','acc-pw','password','new-password','At least 8 characters')+'<p class="msg" id="acc-msg" aria-live="polite"></p><footer><button type="submit" class="btn primary">Save new password</button></footer>';
+  else if(sync.uid) body='<p style="margin:0">Signed in as <b>'+esc(sync.email||'your account')+'</b>.</p><p class="hint" id="acc-state">'+esc(SYNC_LABEL[sync.state])+'</p><hr>'+
+    '<p class="hint">Set a password to sign in on your phone’s home-screen app without waiting for an email.</p>'+accField('New password','acc-pw','password','new-password','At least 8 characters')+
+    '<p class="msg" id="acc-msg" aria-live="polite"></p><footer><button type="button" class="btn danger sp" data-dact="sign-out">Sign out</button><button type="button" class="btn" data-dact="close">Close</button><button type="submit" class="btn primary">Save password</button></footer>';
+  else body='<p class="hint">Sign in to keep your plans in your account and see them on every device. Plans already on this device are kept and uploaded the first time.</p>'+
+    accField('Email','acc-email','email','email','you@example.com')+accField('Password','acc-pw','password','current-password','')+
+    '<p class="msg" id="acc-msg" aria-live="polite"></p><div id="acc-code-box"></div>'+
+    '<div class="btnrow"><button type="button" class="btn" data-dact="sign-up">Create account</button><button type="submit" class="btn primary">Sign in</button></div>'+
+    '<div class="btnrow" style="justify-content:flex-start"><button type="button" class="btn sm" data-dact="forgot">Forgot password</button><button type="button" class="btn sm" data-dact="send-link">Email me a sign-in link instead</button></div>';
   showDlg('<form class="dform" id="accform" novalidate>'+dHead('Account')+body+'</form>','account');
 }
+function accVals(){ return {email:(($('#acc-email')||{}).value||'').trim(),pw:($('#acc-pw')||{}).value||''}; }
+function accMsg(t,kind){ var m=$('#acc-msg'); if(!m) return; m.style.color=kind==='ok'?'var(--ok)':kind==='err'?'var(--danger)':'var(--muted)'; m.textContent=t; }
+var accFail=function(){ accMsg('Couldn’t reach the server. Check your connection.','err'); };
+function signInPw(){
+  var v=accVals();
+  if(!EMAILRE.test(v.email)) return accMsg('Enter a valid email address.','err');
+  if(!v.pw) return accMsg('Enter your password.','err');
+  accMsg('Signing in…');
+  SB.auth.signInWithPassword({email:v.email,password:v.pw}).then(function(r){
+    if(r.error) accMsg(/invalid login/i.test(r.error.message)?'That email or password isn’t right. If you have only used email links so far, tap “Forgot password” to set one.':r.error.message,'err');
+  }).catch(accFail);
+}
+function signUpPw(){
+  var v=accVals();
+  if(!EMAILRE.test(v.email)) return accMsg('Enter a valid email address.','err');
+  if(v.pw.length<8) return accMsg('Use a password of at least 8 characters.','err');
+  accMsg('Creating account…');
+  SB.auth.signUp({email:v.email,password:v.pw,options:{emailRedirectTo:location.origin+location.pathname}}).then(function(r){
+    if(r.error) accMsg(r.error.message,'err');
+    else if(!(r.data&&r.data.session)) accMsg('If this is a new account, check your email to confirm it, then sign in. If you already have an account, tap Sign in.','ok');
+  }).catch(accFail);
+}
+function forgotPw(){
+  var v=accVals();
+  if(!EMAILRE.test(v.email)) return accMsg('Enter your email address first.','err');
+  accMsg('Sending…');
+  SB.auth.resetPasswordForEmail(v.email,{redirectTo:location.origin+location.pathname}).then(function(r){
+    if(r.error) accMsg(r.error.message,'err'); else accMsg('If that email has an account, a reset link is on its way. Open it on this device.','ok');
+  }).catch(accFail);
+}
+function setPassword(){
+  var v=accVals();
+  if(v.pw.length<8) return accMsg('Use a password of at least 8 characters.','err');
+  accMsg('Saving…');
+  SB.auth.updateUser({password:v.pw}).then(function(r){
+    if(r.error){ accMsg(r.error.message,'err'); return; }
+    if(sync.recovery){ sync.recovery=false; accountDialog(); setTimeout(function(){accMsg('Password saved. You’re signed in.','ok')},0); }
+    else { accMsg('Password saved. You can now sign in with it on any device.','ok'); var p=$('#acc-pw'); if(p) p.value=''; }
+  }).catch(accFail);
+}
 function sendLink(){
-  var em=($('#acc-email')||{}).value||'',m=$('#acc-msg'); em=em.trim();
-  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)){m.style.color='var(--danger)';m.textContent='Enter a valid email address.';return}
-  m.style.color='var(--muted)';m.textContent='Sending…';
-  SB.auth.signInWithOtp({email:em,options:{emailRedirectTo:location.origin+location.pathname}}).then(function(r){
-    if(r.error){m.style.color='var(--danger)';m.textContent=r.error.message||'Couldn’t send the link. Try again in a minute.';}
-    else{
-      m.style.color='var(--ok)';m.textContent='Email sent. Tap the link in it, or type the code from the email below.';
-      var box=$('#acc-code-box');
-      if(box){ box.innerHTML='<label class="f"><span>Code from the email</span><input type="text" id="acc-code" autocomplete="one-time-code" inputmode="numeric" maxlength="10" placeholder="Enter the code" style="width:100%;border:1px solid var(--line);background:var(--surface2);border-radius:10px;padding:8px 11px;font-size:18px;letter-spacing:.2em;text-align:center"></label><div class="btnrow"><button type="button" class="btn primary" data-dact="verify-code">Sign in with code</button></div>'; var ci=$('#acc-code'); if(ci) ci.focus(); }
-    }
-  }).catch(function(){m.style.color='var(--danger)';m.textContent='Couldn’t reach the server. Check your connection.'});
+  var v=accVals();
+  if(!EMAILRE.test(v.email)) return accMsg('Enter your email address first.','err');
+  accMsg('Sending…');
+  SB.auth.signInWithOtp({email:v.email,options:{emailRedirectTo:location.origin+location.pathname}}).then(function(r){
+    if(r.error){ accMsg(r.error.message||'Couldn’t send the link. Try again in a minute.','err'); return; }
+    accMsg('Email sent. Open the link on this device. If the email shows a code, type it below.','ok');
+    var box=$('#acc-code-box');
+    if(box){ box.innerHTML='<label class="f"><span>Code from the email (if shown)</span><input type="text" id="acc-code" autocomplete="one-time-code" inputmode="numeric" maxlength="10" placeholder="Enter the code" style="'+INPUT_CSS+';font-size:18px;letter-spacing:.2em;text-align:center"></label><div class="btnrow"><button type="button" class="btn" data-dact="verify-code">Sign in with code</button></div>'; }
+  }).catch(accFail);
 }
 
 /* ---------- dialog infrastructure ---------- */
@@ -841,7 +890,7 @@ function copyText(t){
 }
 
 /* ----- dialog events ----- */
-dlg.addEventListener('submit',function(e){e.preventDefault();if(dlgMode==='event')saveEvent();else if(dlgMode==='account'&&SB&&!sync.uid)sendLink()});
+dlg.addEventListener('submit',function(e){e.preventDefault();if(dlgMode==='event')saveEvent();else if(dlgMode==='account'&&SB){ if(sync.recovery||sync.uid) setPassword(); else signInPw(); }});
 dlg.addEventListener('input',function(e){
   var t=e.target,f=t.dataset&&t.dataset.f; if(!f) return;
   if(dlgMode==='event'){
@@ -881,6 +930,9 @@ dlg.addEventListener('click',function(e){
   switch(a){
     case 'close':closeDlg();break;
     case 'sign-out':if(SB)SB.auth.signOut();break;
+    case 'sign-up':if(SB)signUpPw();break;
+    case 'forgot':if(SB)forgotPw();break;
+    case 'send-link':if(SB)sendLink();break;
     case 'verify-code':{
       var em2=(($('#acc-email')||{}).value||'').trim(),cd=(($('#acc-code')||{}).value||'').replace(/\s+/g,''),mm=$('#acc-msg');
       if(!/^\d{4,10}$/.test(cd)){mm.style.color='var(--danger)';mm.textContent='Enter the numeric code from the email.';break}
